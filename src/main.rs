@@ -1,17 +1,21 @@
 use axum::{
     Router,
-    extract::Request,
+    http::Request,
     middleware::{self, Next},
     response::Response,
     routing::get,
+    body::Body,
 };
 use std::net::SocketAddr;
 use std::time::Instant;
 
-async fn log_middleware(req: Request, next: Next) -> Response {
+async fn log_requests(req:Request<Body>, next:Next) -> Response {
+    //middleware for logging
     let start = Instant::now();
     let path = req.uri().path().to_string();
     println!("GET {}", path);
+
+    //moving from the middleware to the next handler
     let response = next.run(req).await;
     let duration = start.elapsed();
 
@@ -19,15 +23,23 @@ async fn log_middleware(req: Request, next: Next) -> Response {
     response
 }
 
-async fn hello() -> &'static str {
-    "hello from axum"
+//routes
+async fn home() -> &'static str {
+    "welcome to the main page"
 }
 
+async fn list_users() -> &'static str {
+    "list of users"
+}
 #[tokio::main]
 async fn main() {
-    let app = Router::new()
-        .route("/", get(hello))
-        .layer(middleware::from_fn(log_middleware));
+    //Definition Router specific to users(with middleware)
+    let users_router = Router::new()
+        .route("/users", get(list_users))
+        .layer(middleware::from_fn(log_requests)); //it is only active for this route
+
+    //define the main route
+    let app = Router::new().route("/", get(home)).merge(users_router); //we combine two router
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
     println!("server running on http://{}", addr);
