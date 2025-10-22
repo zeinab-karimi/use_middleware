@@ -1,6 +1,6 @@
 use axum::{
     Router,
-    http::Request,
+    http::{Request,StatusCode},
     middleware::{self, Next},
     response::Response,
     routing::get,
@@ -9,8 +9,34 @@ use axum::{
 use std::net::SocketAddr;
 use std::time::Instant;
 
-async fn log_requests(req:Request<Body>, next:Next) -> Response {
+//Middleware for authentication
+async fn auth_middleware(req:Request<Body>,next:Next)->Response{
+
+
+    let auth_header = req.headers().get("Authorization");
+
+    match auth_header {
+        Some(value) => {
+            let token = value.to_str().unwrap_or("");
+            if token == "Bearer my_secret_token" {
+                next.run(req).await
+            } else {
+                Response::builder()
+                    .status(StatusCode::UNAUTHORIZED)
+                    .body("the token is invalid".into())
+                    .unwrap()
+            }
+        }
+        None => {
+            Response::builder()
+                .status(StatusCode::UNAUTHORIZED)
+                .body("No token sent".into())
+                .unwrap()
+        }
+    }
+}
     //middleware for logging
+async fn log_requests(req:Request<Body>,next:Next)->Response{
     let start = Instant::now();
     let path = req.uri().path().to_string();
     println!("GET {}", path);
@@ -31,12 +57,15 @@ async fn home() -> &'static str {
 async fn list_users() -> &'static str {
     "list of users"
 }
+
+
 #[tokio::main]
 async fn main() {
-    //Definition Router specific to users(with middleware)
+
     let users_router = Router::new()
         .route("/users", get(list_users))
-        .layer(middleware::from_fn(log_requests)); //it is only active for this route
+        .layer(middleware::from_fn(log_requests))
+        .layer(middleware::from_fn(auth_middleware));//it is only active for this route
 
     //define the main route
     let app = Router::new().route("/", get(home)).merge(users_router); //we combine two router
